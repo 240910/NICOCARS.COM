@@ -133,6 +133,25 @@ footer{
   border-top:1px solid rgba(255,255,255,.08);
 }
 
+
+.form-status{
+  margin-top:14px;
+  padding:14px;
+  border-radius:14px;
+  display:none;
+  background:rgba(34,197,94,.12);
+  border:1px solid rgba(34,197,94,.35);
+  color:#bbf7d0;
+}
+.delivery-order{
+  display:none;
+  margin-top:24px;
+  padding:24px;
+  border-radius:22px;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.08);
+}
+
 @media(max-width:760px){
   h1{font-size:44px}
   nav .links{display:none}
@@ -210,7 +229,7 @@ footer{
       Svært gunstige priser på bildeler. Send forespørsel med registreringsnummer eller chassisnummer, så finner vi riktig del, OEM-nummer og pris.
     </div>
 
-    <form name="bildeler" method="POST" data-netlify="true">
+    <form name="bildeler" method="POST" data-netlify="true" onsubmit="submitNetlifyForm(event, 'partsStatus')">
       <input type="hidden" name="form-name" value="bildeler">
       <input name="Registreringsnummer" placeholder="Registreringsnummer">
       <input name="Chassisnummer" placeholder="Chassisnummer">
@@ -221,13 +240,14 @@ footer{
       <input name="Telefon" placeholder="Telefon">
       <textarea name="Melding" placeholder="Ekstra info"></textarea>
       <button type="submit">Be om pris</button>
+      <div id="partsStatus" class="form-status"></div>
     </form>
   </div>
 </section>
 
 <section class="container" id="levering">
   <h2>Levering i Trondheim og omegn</h2>
-  <p>Beregn estimert pris. Pris: startpris 150 kr + 35 kr/km. Minimumspris 300 kr.</p>
+  <p>Beregn estimert pris. Pris: startpris 100 kr + 30 kr/km.</p>
 
   <input id="fromAddress" placeholder="Henteadresse">
   <input id="toAddress" placeholder="Leveringsadresse">
@@ -246,7 +266,30 @@ footer{
   </select>
 
   <button onclick="calculateDeliveryPrice()">Beregn pris</button>
+  <button class="dark" onclick="openDeliveryOrder()" type="button">Bestill levering</button>
   <h3 id="deliveryResult"></h3>
+
+  <div id="deliveryOrderBox" class="delivery-order">
+    <h3>Bestill levering</h3>
+    <p>Fyll inn kontaktinformasjon. Henteadresse, leveringsadresse og beregnet pris blir sendt sammen med bestillingen.</p>
+
+    <form name="levering" method="POST" data-netlify="true" onsubmit="submitNetlifyForm(event, 'deliveryStatus')">
+      <input type="hidden" name="form-name" value="levering">
+      <input type="hidden" name="Henteadresse" id="orderFrom">
+      <input type="hidden" name="Leveringsadresse" id="orderTo">
+      <input type="hidden" name="Avstand" id="orderDistance">
+      <input type="hidden" name="Leveringstype" id="orderType">
+      <input type="hidden" name="Tidspunkt" id="orderTime">
+      <input type="hidden" name="Beregnet pris" id="orderPrice">
+
+      <input name="Navn" placeholder="Navn" required>
+      <input type="email" name="Epost" placeholder="E-post" required>
+      <input name="Telefon" placeholder="Telefon" required>
+      <textarea name="Melding" placeholder="Ekstra melding"></textarea>
+      <button type="submit">Send leveringsbestilling</button>
+      <div id="deliveryStatus" class="form-status"></div>
+    </form>
+  </div>
 </section>
 
 <section class="section-dark" id="betaling">
@@ -364,13 +407,14 @@ footer{
   <p><strong>Telefon:</strong> <a href="tel:+4745854710">+47 458 54 710</a></p>
   <p><strong>Telefontid:</strong> 18:00 – 20:00</p>
 
-  <form name="kontakt" method="POST" data-netlify="true">
+  <form name="kontakt" method="POST" data-netlify="true" onsubmit="submitNetlifyForm(event, 'contactStatus')">
     <input type="hidden" name="form-name" value="kontakt">
     <input name="Navn" placeholder="Navn" required>
     <input type="email" name="Epost" placeholder="E-post" required>
     <input name="Telefon" placeholder="Telefon">
     <textarea name="Melding" placeholder="Melding" required></textarea>
     <button type="submit">Send melding</button>
+    <div id="contactStatus" class="form-status"></div>
   </form>
 </section>
 
@@ -431,7 +475,7 @@ function openModal(i){
     <p>Visning og prøvekjøring kun etter avtale.</p>
 
     <h3>Kontakt om denne bilen</h3>
-    <form name="bilforesporsel" method="POST" data-netlify="true">
+    <form name="bilforesporsel" method="POST" data-netlify="true" onsubmit="submitNetlifyForm(event, 'carStatus')">
       <input type="hidden" name="form-name" value="bilforesporsel">
       <input type="hidden" name="Bil" value="${car.title}">
       <input name="Navn" placeholder="Navn" required>
@@ -439,6 +483,7 @@ function openModal(i){
       <input name="Telefon" placeholder="Telefon">
       <textarea name="Melding" placeholder="Melding"></textarea>
       <button type="submit">Send forespørsel</button>
+      <div id="carStatus" class="form-status"></div>
     </form>
   `;
   document.getElementById("modal").style.display="block";
@@ -448,6 +493,8 @@ function closeModal(){
   document.getElementById("modal").style.display="none";
 }
 
+let latestDeliveryPrice = null;
+
 function calculateDeliveryPrice(){
   const distanceKm = Number(document.getElementById("distanceKm").value);
   const type = Number(document.getElementById("type").value);
@@ -456,20 +503,93 @@ function calculateDeliveryPrice(){
   if(!distanceKm || distanceKm <= 0){
     document.getElementById("deliveryResult").innerText =
       "Skriv inn gyldig avstand i kilometer.";
+    latestDeliveryPrice = null;
     return;
   }
 
-  const startpris = 150;
-  const kmPris = 35;
-  const minstepris = 300;
+  const startpris = 100;
+  const kmPris = 30;
 
   let price = startpris + (distanceKm * kmPris);
-  price = Math.max(minstepris, price);
   price = Math.round(price * type * time);
+  latestDeliveryPrice = price;
 
   document.getElementById("deliveryResult").innerHTML =
     "Avstand: " + distanceKm.toFixed(1) + " km<br>" +
     "Estimert pris: " + price + " kr";
+
+  fillDeliveryOrderFields();
+}
+
+function openDeliveryOrder(){
+  if(!latestDeliveryPrice){
+    calculateDeliveryPrice();
+  }
+
+  if(!latestDeliveryPrice){
+    return;
+  }
+
+  fillDeliveryOrderFields();
+  document.getElementById("deliveryOrderBox").style.display = "block";
+  document.getElementById("deliveryOrderBox").scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+function fillDeliveryOrderFields(){
+  const from = document.getElementById("fromAddress").value || "";
+  const to = document.getElementById("toAddress").value || "";
+  const distanceKm = Number(document.getElementById("distanceKm").value);
+  const typeSelect = document.getElementById("type");
+  const timeSelect = document.getElementById("time");
+
+  document.getElementById("orderFrom").value = from;
+  document.getElementById("orderTo").value = to;
+  document.getElementById("orderDistance").value = distanceKm ? distanceKm.toFixed(1) + " km" : "";
+  document.getElementById("orderType").value = typeSelect.options[typeSelect.selectedIndex].text;
+  document.getElementById("orderTime").value = timeSelect.options[timeSelect.selectedIndex].text;
+  document.getElementById("orderPrice").value = latestDeliveryPrice ? latestDeliveryPrice + " kr" : "";
+}
+
+async function submitNetlifyForm(event, statusId){
+  event.preventDefault();
+
+  const form = event.target;
+  const statusBox = document.getElementById(statusId);
+
+  if(statusBox){
+    statusBox.style.display = "block";
+    statusBox.innerText = "Sender...";
+  }
+
+  try{
+    const formData = new FormData(form);
+    const body = new URLSearchParams(formData).toString();
+
+    const response = await fetch("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body
+    });
+
+    if(response.ok){
+      if(statusBox){
+        statusBox.innerText = "Takk! Meldingen er sendt.";
+      }
+      form.reset();
+      if(form.name === "levering"){
+        fillDeliveryOrderFields();
+      }
+    } else {
+      if(statusBox){
+        statusBox.innerText = "Kunne ikke sende meldingen. Prøv igjen eller kontakt oss direkte.";
+      }
+    }
+  } catch(error){
+    if(statusBox){
+      statusBox.innerText = "Kunne ikke sende meldingen. Prøv igjen eller kontakt oss direkte.";
+    }
+    console.error(error);
+  }
 }
 
 async function payGeneralWithVipps(){
@@ -517,6 +637,31 @@ function copyText(id){
 
 renderCars(cars);
 </script>
+
+
+<!-- Skjulte skjemaer for Netlify Forms-detektering -->
+<form name="bilforesporsel" method="POST" data-netlify="true" hidden>
+  <input type="hidden" name="form-name" value="bilforesporsel">
+  <input name="Bil">
+  <input name="Navn">
+  <input name="Epost">
+  <input name="Telefon">
+  <textarea name="Melding"></textarea>
+</form>
+
+<form name="levering" method="POST" data-netlify="true" hidden>
+  <input type="hidden" name="form-name" value="levering">
+  <input name="Henteadresse">
+  <input name="Leveringsadresse">
+  <input name="Avstand">
+  <input name="Leveringstype">
+  <input name="Tidspunkt">
+  <input name="Beregnet pris">
+  <input name="Navn">
+  <input name="Epost">
+  <input name="Telefon">
+  <textarea name="Melding"></textarea>
+</form>
 
 </body>
 </html>
